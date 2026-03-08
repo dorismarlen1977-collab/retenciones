@@ -37,6 +37,22 @@ def extraer_texto(pdf):
     return texto
 
 
+def extraer_ruc(texto):
+
+    ruc = re.search(r'RUC[:\s]*([0-9]{13})', texto)
+
+    if ruc:
+        return ruc.group(1)
+
+    # respaldo si no aparece con la palabra RUC
+    ruc_alt = re.search(r'\b[0-9]{13}\b', texto)
+
+    if ruc_alt:
+        return ruc_alt.group(0)
+
+    return ""
+
+
 def buscar(texto, patron):
 
     m=re.search(patron,texto,re.IGNORECASE)
@@ -68,13 +84,6 @@ def extraer_empresa(texto):
             return l.strip()
 
     return ""
-
-
-def extraer_ruc_superior(texto):
-
-    ruc=buscar(texto,r"RUC[:\s]*([0-9]{13})")
-
-    return ruc
 
 
 def extraer_base_retencion(texto):
@@ -130,7 +139,7 @@ def procesar_pdf(pdf):
 
     factura=buscar(texto,r"No\.?\s*([0-9\-]+)")
 
-    ruc=extraer_ruc_superior(texto)
+    ruc=extraer_ruc(texto)
 
     autorizacion=buscar(texto,r"Autorizaci[oó]n[:\s]*([0-9]{10,})")
 
