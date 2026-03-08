@@ -40,6 +40,7 @@ def extraer_texto(pdf):
 def buscar(texto, patron):
 
     m=re.search(patron,texto,re.IGNORECASE)
+
     if m:
         return m.group(1).strip()
 
@@ -60,7 +61,7 @@ def extraer_empresa(texto):
 
     lineas=texto.split("\n")
 
-    for l in lineas[:8]:
+    for l in lineas[:10]:
 
         if "S.A" in l.upper() or "CIA" in l.upper() or "LTDA" in l.upper():
 
@@ -69,18 +70,25 @@ def extraer_empresa(texto):
     return ""
 
 
+def extraer_ruc_superior(texto):
+
+    ruc=buscar(texto,r"RUC[:\s]*([0-9]{13})")
+
+    return ruc
+
+
 def extraer_base_retencion(texto):
 
     base0=0
     base15=0
 
-    patron=r"Base Imponible para la Retenci[oó]n\s*([0-9\.]+)\s*([A-Za-z\s]+)"
+    patron=r"Base Imponible para la Retenci[oó]n\s*([0-9\.,]+)\s*(IVA|RENTA)"
 
     matches=re.findall(patron,texto,re.IGNORECASE)
 
     for valor,impuesto in matches:
 
-        valor=float(valor)
+        valor=float(valor.replace(",",""))
 
         if "RENTA" in impuesto.upper():
 
@@ -122,13 +130,13 @@ def procesar_pdf(pdf):
 
     factura=buscar(texto,r"No\.?\s*([0-9\-]+)")
 
-    ruc=buscar(texto,r"RUC[:\s]*([0-9]{13})")
+    ruc=extraer_ruc_superior(texto)
 
     autorizacion=buscar(texto,r"Autorizaci[oó]n[:\s]*([0-9]{10,})")
 
-    iva=buscar_num(texto,r"IVA\s*\$?\s*([0-9\.]+)")
+    iva=buscar_num(texto,r"IVA\s*\$?\s*([0-9\.,]+)")
 
-    propina=buscar_num(texto,r"PROPINA\s*\$?\s*([0-9\.]+)")
+    propina=buscar_num(texto,r"PROPINA\s*\$?\s*([0-9\.,]+)")
 
     base0,base15=extraer_base_retencion(texto)
 
@@ -136,7 +144,7 @@ def procesar_pdf(pdf):
 
     rete10,rete2=extraer_retenciones(texto,total)
 
-    valor_retenido=rete10+rete2
+    total_retencion=rete10+rete2
 
     fila={
         "FECHA":fecha,
@@ -157,8 +165,8 @@ def procesar_pdf(pdf):
         "RETE 10%":rete10,
         "RETE 100%":"",
         "2% R.FTE":rete2,
-        "TOTAL RETENCION":valor_retenido,
-        "valor retenido":valor_retenido
+        "TOTAL RETENCION":total_retencion,
+        "valor retenido":total_retencion
     }
 
     return fila
@@ -170,7 +178,9 @@ if uploaded_files:
 
     for file in uploaded_files:
 
-        datos.append(procesar_pdf(file))
+        fila=procesar_pdf(file)
+
+        datos.append(fila)
 
     df=pd.DataFrame(datos,columns=columnas)
 
