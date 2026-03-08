@@ -6,9 +6,9 @@ from io import BytesIO
 import xlsxwriter
 from datetime import datetime
 
-st.set_page_config(page_title="Retenciones SRI Bitghun", layout="wide")
+st.set_page_config(page_title="Retenciones SRI", layout="wide")
 
-st.title("Generador de Retenciones SRI 2025")
+st.title("Generador de Retenciones SRI")
 
 uploaded_files = st.file_uploader(
     "Subir comprobantes PDF",
@@ -23,47 +23,45 @@ columnas = [
 "2% R.FTE","TOTAL RETENCION","valor retenido"
 ]
 
-
 def extraer_texto(pdf):
 
     texto=""
 
     with pdfplumber.open(pdf) as pdf_file:
         for page in pdf_file.pages:
-            contenido=page.extract_text()
-            if contenido:
-                texto+=contenido+"\n"
+            t=page.extract_text()
+            if t:
+                texto+=t+"\n"
 
     return texto
 
 
 def extraer_ruc(texto):
 
-    ruc = re.search(r'RUC[:\s]*([0-9]{13})', texto)
+    ruc=re.search(r'RUC[:\s]*([0-9]{13})',texto)
 
     if ruc:
         return ruc.group(1)
 
-    # respaldo si no aparece con la palabra RUC
-    ruc_alt = re.search(r'\b[0-9]{13}\b', texto)
+    alt=re.search(r'\b[0-9]{13}\b',texto)
 
-    if ruc_alt:
-        return ruc_alt.group(0)
+    if alt:
+        return alt.group(0)
 
     return ""
 
 
-def buscar(texto, patron):
+def buscar(texto,patron):
 
     m=re.search(patron,texto,re.IGNORECASE)
 
     if m:
-        return m.group(1).strip()
+        return m.group(1)
 
     return ""
 
 
-def buscar_num(texto, patron):
+def buscar_num(texto,patron):
 
     m=re.search(patron,texto,re.IGNORECASE)
 
@@ -80,18 +78,17 @@ def extraer_empresa(texto):
     for l in lineas[:10]:
 
         if "S.A" in l.upper() or "CIA" in l.upper() or "LTDA" in l.upper():
-
             return l.strip()
 
     return ""
 
 
-def extraer_base_retencion(texto):
+def obtener_base(texto):
 
     base0=0
     base15=0
 
-    patron=r"Base Imponible para la Retenci[oó]n\s*([0-9\.,]+)\s*(IVA|RENTA)"
+    patron=r"Base Imponible para la Retenci[oó]n\s*([0-9\.,]+).*?(IVA|RENTA)"
 
     matches=re.findall(patron,texto,re.IGNORECASE)
 
@@ -100,27 +97,23 @@ def extraer_base_retencion(texto):
         valor=float(valor.replace(",",""))
 
         if "RENTA" in impuesto.upper():
-
             base0+=valor
 
-        elif "IVA" in impuesto.upper():
-
+        if "IVA" in impuesto.upper():
             base15+=valor
 
     return base0,base15
 
 
-def extraer_retenciones(texto,total):
+def calcular_retenciones(texto,total):
 
     rete10=0
     rete2=0
 
     if re.search(r"10\s*%",texto):
-
         rete10=round(total*0.10,2)
 
     if re.search(r"2\s*%",texto):
-
         rete2=round(total*0.02,2)
 
     return rete10,rete2
@@ -147,11 +140,14 @@ def procesar_pdf(pdf):
 
     propina=buscar_num(texto,r"PROPINA\s*\$?\s*([0-9\.,]+)")
 
-    base0,base15=extraer_base_retencion(texto)
+    base0,base15=obtener_base(texto)
+
+    if iva>0 and base15==0:
+        base15=buscar_num(texto,r"SUBTOTAL\s*\$?\s*([0-9\.,]+)")
 
     total=base0+base15+propina+iva
 
-    rete10,rete2=extraer_retenciones(texto,total)
+    rete10,rete2=calcular_retenciones(texto,total)
 
     total_retencion=rete10+rete2
 
@@ -186,10 +182,7 @@ if uploaded_files:
     datos=[]
 
     for file in uploaded_files:
-
-        fila=procesar_pdf(file)
-
-        datos.append(fila)
+        datos.append(procesar_pdf(file))
 
     df=pd.DataFrame(datos,columns=columnas)
 
@@ -204,14 +197,14 @@ if uploaded_files:
         workbook=writer.book
         worksheet=writer.sheets["RETENCIONES"]
 
-        amarillo=workbook.add_format({
+        header1=workbook.add_format({
             "bold":True,
             "border":1,
             "align":"center",
             "bg_color":"#FFFF00"
         })
 
-        azul=workbook.add_format({
+        header2=workbook.add_format({
             "bold":True,
             "border":1,
             "align":"center",
@@ -221,19 +214,19 @@ if uploaded_files:
         for col,col_name in enumerate(columnas):
 
             if col>=14:
-                worksheet.write(0,col,col_name,azul)
+                worksheet.write(0,col,col_name,header2)
             else:
-                worksheet.write(0,col,col_name,amarillo)
+                worksheet.write(0,col,col_name,header1)
 
         filas=len(df)+1
 
-        formato_total=workbook.add_format({
+        total_format=workbook.add_format({
             "bold":True,
             "border":1,
             "bg_color":"#FFFF00"
         })
 
-        worksheet.write(filas,0,"TOTAL",formato_total)
+        worksheet.write(filas,0,"TOTAL",total_format)
 
         for i in range(8,20):
 
@@ -241,7 +234,7 @@ if uploaded_files:
 
             formula=f"=SUM({letra}2:{letra}{filas})"
 
-            worksheet.write_formula(filas,i,formula,formato_total)
+            worksheet.write_formula(filas,i,formula,total_format)
 
         worksheet.set_column(0,20,18)
 
@@ -250,6 +243,6 @@ if uploaded_files:
     st.download_button(
         "Descargar Excel",
         data=output,
-        file_name="retenciones_bitghun_2025.xlsx",
+        file_name="retenciones_sri.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
